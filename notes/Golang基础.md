@@ -7542,6 +7542,794 @@ import (
 )
 ```
 
+## Go单元测试
+
+### 如何写单元测试用例
+
+大型的项目中为了保证项目的健壮性都会编写单元测试
+
+go中的单元测试，需要运行命令
+
+```sh
+go test
+```
+
+go单元测试的特点
+
+* `go test`命令是一个按照一定约定和组织的测试代码的驱动程序
+* 在包目录中，所有以`_test.go`为后缀的源码文件都会被`go test`运行
+* 我们写的`_test.go`源码文件不用担心内容过多，因为`go build`命令不会将这些测试文件打包到最后的可执行文件
+
+>test文件分类
+
+|     开头      |   作用   |  参数类型  |
+| :-----------: | :------: | :--------: |
+|   Test开头    | 功能测试 | *testing.T |
+| Benchmark开头 | 性能测试 | *testing.B |
+|  Example开头  | 示例函数 | *testing.E |
+|   Fuzz开头    | 模糊测试 | *testing.F |
+
+>基本分类的意义
+
+* Test测试函数
+
+  ```sh
+  函数前缀为Test 主要用于测试程序的一些逻辑行为是否正确
+  ```
+
+* Benchmark又叫基准测试
+
+  ```sh
+  函数名前缀为Benchmark 主要测试函数的性能
+  
+  基准函数会自定义一个时间段用于执行代码,如果代码简洁,被测函数的执行次数需要成倍增加（直到达到基准测试函数给的预期,然后统计一共执行了多少轮,，每轮平均用时多少）
+  ```
+
+* Example测试
+
+  ```sh
+  函数的前缀名为 Example 为文档提示示例文档
+  ```
+
+* Fuzz模糊测试
+
+  ```sh
+  模糊测试（Fuzz Testing）是一种随机化的测试方式，它通过生成大量随机数据来模拟真实情况下的输入数据，以此检测代码中的各种漏洞和错误。在Golang的单元测试中，模糊测试可以帮助开发人员找出代码中可能存在的缺陷，并尽早修复这些问题。
+  
+  模糊测试的作用:
+  模糊测试主要有两个作用。第一，它可以检测代码的健壮性，验证代码是否能够正确处理各种异常情况。第二，它可以帮助开发人员找出代码中的漏洞和错误，从而提高代码的质量和稳定性。
+  
+  模糊测试的使用方法：
+  要使用Golang进行模糊测试，需要引入相应的测试框架。其中，GoFuzz是一个流行的Golang模糊测试框架，它可以自动生成大量的随机数据，并通过执行覆盖率分析等技术来检测代码中的漏洞和错误。
+  ```
+
+### Test功能测试
+
+> 待测函数
+
+`add.go`
+
+```go
+package goTest
+
+func add(a, b int) int {
+	return a + b
+}
+```
+
+>Test测试
+
+`add_test.go`
+
+```go
+package goTest
+
+import "testing"
+
+/*
+	在go中test测试要和被测目标处于同一个包，
+	因为需要使用到一些小写的不对外暴露的变量等
+*/
+
+// 测试函数
+//  1. TestAdd 以Test开头，add方法的测试函数
+//  2. 参数：
+//     t 类型*testing.T,用于反馈测试结果
+func TestAdd(t *testing.T) {
+	//在测试函数中调用需要测试的方法
+	//查看执行结果是否正确
+	re := add(1, 3)
+
+	//通过假定的测试结果来进行判断
+	if re != 4 {
+		//如果错误了如何报错 t.Errorf方法
+		t.Errorf("expect %d,actual %d", 4, re)
+	}
+}
+```
+
+IDE和golang会将`_test.go`文件识别为测试文件
+
+>注意事项
+
+```sh
+1. add.go与add_test.go 应该在同一个包下，因为一些小写开头的变量或方法，属于本包私有，保外无法访问不好测试
+
+2.在 func TestAdd 旁边会有一个运行测试的小三角，可以直接运行测试，可以测试单个方法，运行add_test.go会运行里面所有的测试函数
+
+3. t是*testing.T类型的变量，在测试函数里面执行需要测试的方法，看执行结果是不是理想结果，如果不是预期结果则进行错误捕获
+```
+
+>执行成功的案例
+
+```sh
+=== RUN   TestAdd
+--- PASS: TestAdd (0.00s)
+PASS
+```
+
+>错误捕获的案例
+
+```sh
+=== RUN   TestAdd
+    add_test.go:22: expect 5,actual 4
+--- FAIL: TestAdd (0.00s)
+
+FAIL
+```
+
+### 如何跳过耗时的单元测试用例
+
+有时候我们在测试文件中写的测试函数很多，例如十多个，我们自然是想将这些测试函数都运行，但是存在一个问题。
+
+```sh
+可能有些单元测试非常的耗时，如何去跳过比较耗时的单元测试
+```
+
+#### short模式
+
+>举例
+
+```go
+package goTest
+
+import (
+	"fmt"
+	"testing"
+)
+
+/*
+	在go中test测试要和被测目标处于同一个包，
+	因为需要使用到一些小写的不对外暴露的变量等
+*/
+
+// 测试函数
+//  1. TestAdd 以Test开头，add方法的测试函数
+//  2. 参数：
+//     t 类型*testing.T,用于反馈测试结果
+func TestAdd(t *testing.T) {
+	//在测试函数中调用需要测试的方法
+	//查看执行结果是否正确
+	re := add(1, 3)
+
+	//通过假定的测试结果来进行判断
+	if re != 4 {
+		//如果错误了如何报错 t.Errorf方法
+		t.Errorf("expect %d,actual %d", 4, re)
+	}
+}
+
+func TestAdd2(t *testing.T) {
+	//在short之前，会运行
+	fmt.Println("pass")
+
+	//当我们 以short模式进行测试时
+	//下面的不会运行
+	if testing.Short() {
+		t.Skip("short 模式下跳过")
+	}
+
+	//在short之后，不会运行
+	fmt.Println("no!!")
+}
+```
+
+>不使用short模式，正常测试
+
+```sh
+go test add_test.go
+# 命令运行需要main包，无法执行
+
+#推荐直接在add_test.go上执行右键执行 Run 'add_test.go' 
+
+#也可以直接在控制台输入
+go test
+#他会自动取执行目录下所有的test文件
+```
+
+>执行结果
+
+```sh
+=== RUN   TestAdd
+--- PASS: TestAdd (0.00s)
+=== RUN   TestAdd2
+pass
+no!!
+--- PASS: TestAdd2 (0.00s)
+PASS
+```
+
+>使用short模式
+
+```sh
+go test -short
+```
+
+>执行结果
+
+```sh
+pass
+PASS
+ok      gotest  0.137s
+```
+
+>总结
+
+```sh
+如果开启了short模式，那么测试函数中short之前的部分会被执行，之后的会被跳过，类似return的约束
+```
+
+### 基于表格驱动测试
+
+测试函数测试时，测试的数据不止一组，如果每组都写一个测试函数显然不合适
+
+>举例
+
+```go
+//基于表格的单元测试
+//解决我们想要测试多组数据的情形
+func TestAdd3(t *testing.T) {
+	//使用匿名结构体
+	//构筑多组值
+	var dataset = []struct {
+		a   int
+		b   int
+		out int
+	}{
+		{1, 1, 2},
+		{12, 12, 24},
+		{-9, 8, -1},
+	}
+
+	//遍历结构体实例 快速写一堆测试用例
+	for _, val := range dataset {
+		re := add(val.a, val.b)
+		if re != val.out {
+			t.Errorf("期待值为%d,实际值为%d", val.out, re)
+		}
+	}
+}
+```
+
+虽然称做表格，但实际上只是多组值而已，本质上就是遍历多组值来检测方法是否都能正确执行
+
+### benchmark性能测试
+
+在写一些核心的函数的时候，我们希望其性能比较高
+
+>举例
+
+```go
+// 性能测试
+// 参数：
+// 性能测试的参数类型为 *testing.B
+func BenchmarkAdd(be *testing.B) {
+	//重置时间，当有多个性能测试函数在同一个测试文件时使用
+	be.ResetTimer()
+	
+	var a, b, c int
+	a = 123
+	b = 456
+	c = 579
+
+	//be.N 测试运行的轮数，可以通过go test命令传入
+	for i := 0; i < be.N; i++ {
+		if actual := add(a, b); actual != c {
+			fmt.Printf("期待值为%d,实际值为%d", c, actual)
+		}
+	}
+
+	//关闭
+	be.StopTimer()
+}
+```
+
+>运行
+
+```sh
+① 在func BenchmarkAdd 旁边运行，执行单个
+
+② 在add_test.go上运行，Run会多一个选项 gobench add_test.go
+
+③ go test -bench=".*"  终端执行所有的性能测试函数
+```
+
+>结果
+
+```sh
+goos: windows
+goarch: amd64
+pkg: gotest
+cpu: Intel(R) Core(TM) i7-3770 CPU @ 3.40GHz
+BenchmarkAdd
+BenchmarkAdd-8          1000000000               0.2836 ns/op
+PASS
+```
+
+### 小结
+
+```sh
+这里只是对单元测试的入门讲解，后续将根据实际情况进行补充
+```
+
+## Go并发编程
+
+### go并发编程初体验
+
+>背景
+
+```sh
+Python、Java、PHP都是使用多线程编程、多进程编程，多线程和多进程存在的问题主要是耗费内存
+
+这些语言的多线程基本上都会被操作系统调度，例如启动一个python的多线程，本质上是在操作系统中开辟了一个新线程。主要的缺点有以下两个：
+1.内存占用很大
+2.线程切换成本高
+```
+
+随着`web2.0`的发展，对并发的要求越来越高，后来就出现了用户级线程，也被称为绿程、轻量级线程、协程。NodeJs是有协程的，其他语言为了适应发展也支持了协程。
+
+>协程的优势
+
+```sh
+1.内存占用小
+2.切换快，因为他并不是通过操作系统切换的
+```
+
+#### go语言的协程
+
+go语言诞生在web2.0之后，故只提供了协程，其协程叫做`goroutine`,这也就决定了go只有协程的生态，二其他语言由于线程生态较为完善，开发协程就比较缓慢。
+
+>语法
+
+go开启协程非常简单
+
+```sh
+go 函数名
+# 这样就开启了协程，该函数就被异步执行了
+```
+
+>举例
+
+```go
+package main
+
+import "fmt"
+
+func myPrint() {
+	fmt.Println("我的打印")
+}
+
+func main() {
+	/*
+		go的协程非常易于书写
+
+		go 函数名
+
+		这样就开启了协程，该函数就被异步执行了
+	*/
+	go myPrint()
+}
+```
+
+>现象
+
+```sh
+但是我们发现，我们执行后,myPrint并没有执行打印，
+原因：
+main 函数是主协程，主协程一旦执行完毕，或者说挂了，内部调用的子协程也会跟着完结
+
+所以有一种说法叫 主死随从
+就是主协程死掉了，子协程也会死，主要原因是主协程挂掉，程序就退出了，自然不会执行
+```
+
+>演示方案
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func myPrint() {
+	fmt.Println("我的打印")
+}
+
+func main() {
+	go myPrint()
+	
+	
+	//验证goroutine是异步的，如果是同步的，应该在它之前打印
+	fmt.Println("我来自主协程")
+	
+	
+	//主协程沉睡2秒钟，等待子协程执行
+	time.Sleep(2 * time.Second)
+}
+```
+
+>执行结果
+
+```sh
+我来自主协程
+我的打印
+
+```
+
+>小结
+
+```sh
+1. 主死随从 主协程一旦结束，子协程也会退出
+2. 子协程是异步的
+```
+
+#### 一些案例
+
+>协程执行for无限循环，等到主进程退出
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+// 子协程 无限循环等到主协程结束退出
+func loopPrint() {
+	for {
+		//加入时间限制，否则执行的太快了
+		//因为我们的执行逻辑太少了
+		time.Sleep(1 * time.Second)
+		
+		fmt.Println("无限打印")
+	}
+}
+
+func main() {
+
+	go loopPrint()
+
+	//验证goroutine是异步的，如果是同步的，应该在它之前打印
+	fmt.Println("我来自主协程")
+
+	//主协程沉睡2秒钟，等待子协程执行
+	time.Sleep(2 * time.Second)
+}
+```
+
+>很多时候我们不需要在外面单独定义一个函数，而是使用匿名函数
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	//匿名函数启动goroutine
+	go func() {
+		fmt.Println("匿名打印")
+	}()
+
+	//验证goroutine是异步的，如果是同步的，应该在它之前打印
+	fmt.Println("我来自主协程")
+
+	//主协程沉睡2秒钟，等待子协程执行
+	time.Sleep(4 * time.Second)
+}
+```
+
+>启动100个goroutine
+
+由于goroutine协程占用内存极少，所以可以同时启动上万个goroutine
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+
+func main() {
+	//启动100个goroutine
+	for i := 0; i < 100; i++ {
+		go func() {
+			fmt.Println(i)
+		}()
+	}
+
+	//验证goroutine是异步的，如果是同步的，应该在它之前打印
+	fmt.Println("我来自主协程")
+
+	//主协程沉睡2秒钟，等待子协程执行
+	time.Sleep(4 * time.Second)
+}
+```
+
+问题:
+
+```sh
+①没有按顺序打印，甚至打印很多重复的出现
+1.for循环的时候，每次变量都会被重用，就是说每次进入循环体的`i`都是新的
+2.goroutine的执行是个异步的过程，他和for循环不同步
+
+② 没有执行一百次
+因为我们设置的主协程退出执行的时间不够执行，所以应该采取另一种方案，等到子协程完成
+```
+
+解决重复，采用值传递
+
+方案1：
+
+```go
+for i := 0; i < 100; i++ {
+    temp := i
+    go func() {
+        fmt.Println(temp)
+    }()
+}
+```
+
+方案二：
+
+```go
+for i := 0; i < 100; i++ {
+    go func(k int) {
+        fmt.Println(k)
+    }(i)
+}
+```
+
+顺序无法保证，因为goroutine是异步的
+
+#### 拓展
+
+想要深入了解goroutine的底层原理，可以去了解`GMP`调度原理
+
+### 通过waitgroup等待协程的执行
+
+>背景
+
+```sh
+由于协程"主死随从"的特性，主协程一旦结束子协程就会终止
+之前为了让子协程执行，我们采用了让主协程沉睡的方式，但是实际需要沉睡多久，完全无法预期
+所以需要采取另一种思路，让子协程运行完成后再结束
+```
+
+>问题
+
+```sh
+1.子的goroutine如何通知到主的goroutine自己结束了
+2.主的goroutine如何知道子的goroutine已经结束了
+```
+
+>介绍
+
+```sh
+waitGroup主要用于goroutine的执行等待
+Add方法要与Done方法配套，Add有多少个Done就需要多少个
+所以为了防止忘记goroutine的关闭，常用defer配合Done
+```
+
+>步骤
+
+```go
+//1. 制造一个waitGroup实例
+var wg sync.WaitGroup
+```
+
+```go
+//2. wg.Add(整数)
+// 要监控多少个goroutine执行结束
+//在知道具体数量的情况下我们可以写具体数值
+wg.Add(100)
+
+//不知道具体数目时，每执行一次就调一次
+wg.Add(1)
+```
+
+```go
+//3. wg.Done()
+//与Add成对出现，出现的次数等于Add里面的数值
+wg.Done()
+```
+
+```go
+//4.wg.Wait()
+//写在主协程末尾，或者用defer写在最前，表示监听所有子协程完成后才允许终止主协程
+wg.wait()
+```
+
+>举例
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+//子的goroutine如何通知到主的goroutine自己结束了
+//主的goroutine如何知道子的goroutine已经结束了
+
+func main() {
+
+	//① 实例化WaitGroup
+	var wg sync.WaitGroup
+
+	//② 要监控多少个goroutine执行结束
+	//由于我们知道有100个，所以就写100个
+	wg.Add(100)
+	for i := 0; i < 100; i++ {
+		go func(i int) {
+			fmt.Println(i)
+			// Add与Done要同时使用，每次调用Done就自动减1
+			// 如果不调用Done，这个协程就不会结束，最后会形成deadlock(死锁)
+			wg.Done()
+		}(i)
+	}
+
+	//等到所有goroutine结束再结束主协程
+	wg.Wait()
+}
+
+/*
+	小结:
+	waitgroup主要用于goroutine的执行等待
+	Add方法要与Done方法配套，Add有多少个Done就需要多少个
+	所以为了防止忘记goroutine的关闭，常用defer配合Done
+
+	结合defer的特性，
+	① 我们可以把 defer wg.Wait() 写在主协程的开头
+	② 把defer wg.Done()写在每次goroutine的开头
+
+*/
+```
+
+> 如果不确定次数，更推荐Add和Done以`1:1`出现
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+//子的goroutine如何通知到主的goroutine自己结束了
+//主的goroutine如何知道子的goroutine已经结束了
+
+func main() {
+
+	//① 实例化WaitGroup
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+        //② 要监控多少个goroutine执行结束
+        //每次循环加一个，Done一个
+        wg.Add(1)
+        
+		go func(i int) {
+			fmt.Println(i)
+			// Add与Done要同时使用，每次调用Done就自动减1
+			// 如果不调用Done，这个协程就不会结束，最后会形成deadlock(死锁)
+			wg.Done()
+		}(i)
+	}
+
+	//等到所有goroutine结束再结束主协程
+	wg.Wait()
+}
+```
+
+>defer优化Done，如果goroutine的逻辑很长，我们常常会忘记写Done，或是将Done写错位置
+>
+>Done之后的goroutine代码是不会执行的，相当于阻断
+>
+>所以 用defer将Done写在最开始，由于defer的特性，它将最后执行
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+//子的goroutine如何通知到主的goroutine自己结束了
+//主的goroutine如何知道子的goroutine已经结束了
+
+func main() {
+
+	//① 实例化WaitGroup
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+        //② 要监控多少个goroutine执行结束
+        //每次循环加一个，Done一个
+        wg.Add(1)
+        
+		go func(i int) {
+            //防止遗忘
+            defer wg.Done()
+			fmt.Println(i)	
+		}(i)
+	}
+
+	//等到所有goroutine结束再结束主协程
+	wg.Wait()
+}
+```
+
+>优化wait，wait的位置要在所有子协程的最后，也可以使用defer将它写在主协程靠前的位置
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+//子的goroutine如何通知到主的goroutine自己结束了
+//主的goroutine如何知道子的goroutine已经结束了
+
+func main() {
+	//等到所有goroutine结束再结束主协程
+	defer wg.Wait()
+    
+	//① 实例化WaitGroup
+	var wg sync.WaitGroup
+
+	for i := 0; i < 100; i++ {
+        //② 要监控多少个goroutine执行结束
+        //每次循环加一个，Done一个
+        wg.Add(1)
+        
+		go func(i int) {
+            //防止遗忘
+            defer wg.Done()
+			fmt.Println(i)	
+		}(i)
+	}
+
+
+}
+```
+
+### 通过mutex和atomic完成全局变量的原子操作
+
+也就是goroutine当中的锁
+
+
+
 
 
 
